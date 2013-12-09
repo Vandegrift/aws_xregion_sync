@@ -19,6 +19,6 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "require_all"
   s.add_development_dependency "rspec"
  
-  s.files        = Dir.glob("lib/**/*") + %w(LICENSE.md COPYING.LESSER.txt COPYING.LESSER.txt README.md)
+  s.files        = Dir.glob("lib/**/*") + %w(LICENSE.txt COPYING.LESSER.txt COPYING.LESSER.txt README.md)
   s.require_path = 'lib'
 end
