@@ -2,40 +2,20 @@ class AwsXRegionSync
   class Ec2AmiSync < AwsSync
 
     def sync
-      config = {'owner_id'=>'self'}.merge self.config
+      setup = pre_sync_setup
 
-      filters = parse_filters config['sync_identifier'], config['filters']
+      sync_ec2_image_to_region setup[:destination_region], setup[:source_region], setup[:image]
+    end
 
-      ec2 = ec2_client aws_config
-
-      source_region = validate_region ec2, config['source_region']
-      destination_region = validate_region ec2, config['destination_region']
-
-      # Assemble the filter criteria that should help us to find the specific image we're after
-      ami_query = source_region.images
-      ami_query = ami_query.with_owner(config['owner_id'])
-      
-      filters.each {|f| ami_query = ami_query.filter(f[0], f[1])}
-
-      images = ami_query.to_a
-      if images.size > 1
-        raise AwsXRegionSyncConfigError, "More than one EC2 Image was found with the filter settings for identifier '#{self.sync_name}': #{images.collect{|i| i.id}.join(", ")}."
-      elsif images.size == 0
-        raise AwsXRegionSyncConfigError, "No EC2 Images were found using the filter settings for identifier '#{self.sync_name}'."
-      end
-
-      sync_ec2_image_to_region destination_region, source_region, images[0]
+    def sync_required?
+      setup = pre_sync_setup
+      needs_sync? setup[:destination_region], setup[:image]
     end
 
     def sync_ec2_image_to_region destination_region, source_region, image
-      source_tags = image.tags.to_a
-
-      # Look for a tag indicating the image has been synced to the destination region
-      dest_ami_id = find_destination_ami source_tags, destination_region.name
-      do_sync = !image_exists(destination_region, dest_ami_id)
-
       destination_ami_id = nil
-      if do_sync
+
+      if needs_sync?(destination_region, image)
         # At this point, we know the sync has not happened (or the destination image has been removed)
         # Initiate the image copy command (we're not using client_token to ensure indempotency since we're already just using the Sync- identifier tag to ensure we're not 
         # copying the image multiple times to the destination region)
@@ -52,6 +32,40 @@ class AwsXRegionSync
     end
 
     private 
+
+      def pre_sync_setup 
+        config = {'owner_id'=>'self'}.merge self.config
+
+        filters = parse_filters config['sync_identifier'], config['filters']
+
+        ec2 = ec2_client aws_config
+
+        source_region = validate_region ec2, config['source_region']
+        destination_region = validate_region ec2, config['destination_region']
+
+        # Assemble the filter criteria that should help us to find the specific image we're after
+        ami_query = source_region.images
+        ami_query = ami_query.with_owner(config['owner_id'])
+        
+        filters.each {|f| ami_query = ami_query.filter(f[0], f[1])}
+
+        images = ami_query.to_a
+        if images.size > 1
+          raise AwsXRegionSyncConfigError, "More than one EC2 Image was found with the filter settings for identifier '#{self.sync_name}': #{images.collect{|i| i.id}.join(", ")}."
+        elsif images.size == 0
+          raise AwsXRegionSyncConfigError, "No EC2 Images were found using the filter settings for identifier '#{self.sync_name}'."
+        end
+
+        {destination_region: destination_region, source_region: source_region, image: images[0]}
+      end
+
+      def needs_sync? destination_region, image
+        source_tags = image.tags.to_a
+
+        # Look for a tag indicating the image has been synced to the destination region
+        dest_ami_id = find_destination_ami source_tags, destination_region.name
+        !image_exists(destination_region, dest_ami_id)
+      end 
 
       def ec2_client aws_client_config
         AWS::EC2.new(aws_client_config)

@@ -14,5 +14,9 @@ class AwsXRegionSync
     def failed?
       !completed
     end
+
+    def sync_required?
+      completed && created_resource == true
+    end
   end
 end

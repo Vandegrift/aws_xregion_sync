@@ -5,12 +5,21 @@ require_rel 'aws_xregion_sync'
 class AwsXRegionSync
 
   def self.run config_file_path_or_hash
+    do_syncs config_file_path_or_hash, :sync
+  end
+
+  def self.sync_required? config_file_path_or_hash
+    do_syncs config_file_path_or_hash, :sync_required?
+  end
+
+  def self.do_syncs config_file_path_or_hash, job_method
     job_configs = configure config_file_path_or_hash
     error_results = create_results_from_config_errors job_configs[:errors]
-    job_syncs = sync job_configs[:jobs]
+    job_syncs = sync job_configs[:jobs], job_method
 
     job_syncs + error_results
   end
+  private_class_method :do_syncs
 
   def self.configure config
     # Use to_hash since this will allow a broader range of config options to anyone
@@ -23,14 +32,14 @@ class AwsXRegionSync
   end
   private_class_method :configure
 
-  def self.sync sync_jobs
+  def self.sync jobs, job_method
     results = []
-    sync_jobs.each do |job|
+    jobs.each do |job|
       completed = false
       errors = nil
       synced_object_id = nil
       begin
-        synced_object_id = job.sync
+        synced_object_id = job.send job_method
         completed = true
       rescue Exception => e
         # Yes, we're trapping everything here.  I'd like all the sync jobs to at least attempt

@@ -30,4 +30,18 @@ describe AwsXRegionSync::SyncResult do
       expect(r.errors).to eq []
     end
   end
+
+  describe "#sync_required?" do
+    it "reports sync required if completed and created_resource is true" do
+      expect(AwsXRegionSync::SyncResult.new("name", true, true, nil).sync_required?).to be_true
+    end
+
+    it "reports sync not required if not completed" do
+      expect(AwsXRegionSync::SyncResult.new("name", false, true, nil).sync_required?).to be_false
+    end
+
+    it "reports sync not required if non-boolean truthy value is set" do
+      expect(AwsXRegionSync::SyncResult.new("name", true, "true", nil).sync_required?).to be_false
+    end
+  end
 end

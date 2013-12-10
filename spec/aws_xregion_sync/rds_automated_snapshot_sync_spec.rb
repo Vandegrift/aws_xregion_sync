@@ -285,4 +285,122 @@ describe AwsXRegionSync::RdsAutomatedSnapshotSync do
       expect{@sync.sync}.to raise_error AwsXRegionSync::AwsXRegionSyncConfigError, "Region '#{@sync.config['destination_region']}' is invalid.  It either does not exist or the given credentials cannot access it."
     end
   end
+
+  describe "#sync_required?" do
+  
+    it "requires syncing if destination region has no snapshots" do
+      source_region = double("AWS::RDS.source")
+      dest_region = double("AWS::RDS.dest")
+      source_db = double("AWS::RDS::DBInstance")
+      source_db.stub(:id).and_return @sync.config['db_instance']
+      source_db_instances = {'instance'=>source_db}
+      @sync.should_receive(:rds_client).with(@sync.config['source_region'], @sync.config['db_instance']).and_return source_region
+      source_region.stub(:db_instances).and_return source_db_instances
+      source_region.stub(:client).and_return source_region
+      source_region.stub(:config).and_return source_region
+      source_region.stub(:region).and_return @sync.config['source_region']
+      @sync.should_receive(:rds_client).with(@sync.config['destination_region'], @sync.config['db_instance']).and_return dest_region
+      dest_region.stub(:db_instances).and_return {}
+      dest_region.stub(:client).and_return dest_region
+      dest_region.stub(:config).and_return dest_region
+      dest_region.stub(:region).and_return @sync.config['destination_region']
+
+      acct_number = '123456'
+      @sync.should_receive(:retrieve_aws_account_id).and_return acct_number
+
+      source_db.should_receive(:snapshots).and_return source_db
+      source_db.should_receive(:with_type).with("automated").and_return source_db
+      newest_snapshot = OpenStruct.new(:id=>'source_id_2', :created_at=>(Time.now + 60), :db_instance=>source_db)
+      snapshots = [OpenStruct.new(:id=>'source_id_1', :created_at=>Time.now), newest_snapshot]
+      source_db.should_receive(:to_a).and_return snapshots
+
+      dest_snapshot = OpenStruct.new(:id=>'dest_id_2', :created_at=>(Time.now + 60))
+      dest_instance = double("Dest DB Instance")
+      dest_instance.should_receive(:snapshots).and_return dest_instance
+      dest_instance.should_receive(:with_type).with("manual").and_return dest_instance
+      dest_instance.should_receive(:to_a).and_return []
+
+      dest_region.should_receive(:db_instances).and_return({@sync.config['db_instance']=>dest_instance})
+      
+      expect(@sync.sync_required?).to be_true
+    end
+
+    it "requires syncing if destination region's snapshot list is not up to date" do
+      source_region = double("AWS::RDS.source")
+      dest_region = double("AWS::RDS.dest")
+      source_db = double("AWS::RDS::DBInstance")
+      source_db.stub(:id).and_return @sync.config['db_instance']
+      source_db_instances = {'instance'=>source_db}
+      @sync.should_receive(:rds_client).with(@sync.config['source_region'], @sync.config['db_instance']).and_return source_region
+      source_region.stub(:db_instances).and_return source_db_instances
+      source_region.stub(:client).and_return source_region
+      source_region.stub(:config).and_return source_region
+      source_region.stub(:region).and_return @sync.config['source_region']
+      @sync.should_receive(:rds_client).with(@sync.config['destination_region'], @sync.config['db_instance']).and_return dest_region
+      dest_region.stub(:db_instances).and_return {}
+      dest_region.stub(:client).and_return dest_region
+      dest_region.stub(:config).and_return dest_region
+      dest_region.stub(:region).and_return @sync.config['destination_region']
+
+      acct_number = '123456'
+      @sync.should_receive(:retrieve_aws_account_id).and_return acct_number
+
+      source_db.should_receive(:snapshots).and_return source_db
+      source_db.should_receive(:with_type).with("automated").and_return source_db
+      newest_snapshot = OpenStruct.new(:id=>'source_id_2', :created_at=>(Time.now + 60), :db_instance=>source_db)
+      snapshots = [OpenStruct.new(:id=>'source_id_1', :created_at=>Time.now), newest_snapshot]
+      source_db.should_receive(:to_a).and_return snapshots
+
+      dest_snapshot = OpenStruct.new(:id=>'dest_id_2', :created_at=>(Time.now + 60))
+      dest_instance = double("Dest DB Instance")
+      dest_instance.should_receive(:snapshots).and_return dest_instance
+      dest_instance.should_receive(:with_type).with("manual").and_return dest_instance
+      dest_instance.should_receive(:to_a).and_return [dest_snapshot]
+
+      dest_region.should_receive(:db_instances).and_return({@sync.config['db_instance']=>dest_instance})
+      existing_sync_tag = @sync.create_sync_tag @sync.config['source_region'], newest_snapshot.id, timestamp: Time.at(0), sync_subtype: "From"
+      dest_region.should_receive(:list_tags_for_resource).with(resource_name: "arn:aws:rds:#{@sync.config['destination_region']}:#{acct_number}:snapshot:#{dest_snapshot.id}").and_return(tag_list: [existing_sync_tag])
+
+      expect(@sync.sync_required?).to be_true
+    end
+
+    it "does not require syncing if region's snapshot list for source db instance has a copy of the newest source region snapshot" do
+      source_region = double("AWS::RDS.source")
+      dest_region = double("AWS::RDS.dest")
+      source_db = double("AWS::RDS::DBInstance")
+      source_db.stub(:id).and_return @sync.config['db_instance']
+      source_db_instances = {'instance'=>source_db}
+
+      @sync.should_receive(:rds_client).with(@sync.config['source_region'], @sync.config['db_instance']).and_return source_region
+      source_region.stub(:db_instances).and_return source_db_instances
+      source_region.stub(:client).and_return source_region
+      source_region.stub(:config).and_return source_region
+      source_region.stub(:region).and_return @sync.config['source_region']
+      @sync.should_receive(:rds_client).with(@sync.config['destination_region'], @sync.config['db_instance']).and_return dest_region
+      dest_region.stub(:db_instances).and_return {}
+      dest_region.stub(:client).and_return dest_region
+      dest_region.stub(:config).and_return dest_region
+      dest_region.stub(:region).and_return @sync.config['destination_region']
+
+      source_db.should_receive(:snapshots).and_return source_db
+      source_db.should_receive(:with_type).with("automated").and_return source_db
+      newest_snapshot = OpenStruct.new(:id=>'source_id_2', :created_at=>(Time.at(0)), :db_instance=>source_db)
+      source_db.should_receive(:to_a).and_return [newest_snapshot]
+
+      acct_number = '123456'
+      @sync.should_receive(:retrieve_aws_account_id).and_return acct_number
+
+      dest_snapshot = OpenStruct.new(:id=>'dest_id_2', :created_at=>(Time.now + 60))
+      dest_instance = double("Dest DB Instance")
+      dest_instance.should_receive(:snapshots).and_return dest_instance
+      dest_instance.should_receive(:with_type).with("manual").and_return dest_instance
+      dest_instance.should_receive(:to_a).and_return [dest_snapshot]
+
+      dest_region.should_receive(:db_instances).and_return({@sync.config['db_instance']=>dest_instance})
+      existing_sync_tag = @sync.create_sync_tag @sync.config['source_region'], newest_snapshot.id, {timestamp: (Time.now() + 60), sync_subtype: "From"}
+      dest_region.should_receive(:list_tags_for_resource).with(resource_name: "arn:aws:rds:#{@sync.config['destination_region']}:#{acct_number}:snapshot:#{dest_snapshot.id}").and_return(tag_list: [existing_sync_tag])
+
+      expect(@sync.sync_required?).to be_false
+    end
+  end
 end

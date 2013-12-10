@@ -9,23 +9,14 @@ class AwsXRegionSync
     end
 
     def sync
-      # There doesn't appear to be a direct way of actually obtaining
-      # a region reference after initializing the rds client - like there is for the s3 client
-      # so we'll just create multiple clients.
-      source_rds = rds_client config['source_region'], config['db_instance']
-      destination_rds = rds_client config['destination_region'], config['db_instance']
+      setup = pre_sync_setup
+      sync_snapshot_to_region setup[:source_region], setup[:destination_region], setup[:snapshot]
+    end
 
-      instance = source_rds.db_instances[config['db_instance']]
-      raise AwsXRegionSyncConfigError, "No DB Instance with identifier '#{config['db_instance']}' is available for these credentials in region #{config['db_instance']}." unless instance
-
-      # Find all the snapshots
-      snapshots = instance.snapshots.with_type('automated').to_a
-      raise AwsXRegionSyncConfigError, "No automated snapshots for db '#{config['db_instance']}' are available for these credentials in region #{config['source_region']}." unless snapshots.size > 0
-
-      # Use the created_at attribute of the snapshot to find the newest one
-      newest_snapshot = extract_newest_snapshot snapshots
-      
-      sync_snapshot_to_region source_rds, destination_rds, newest_snapshot
+    def sync_required?
+      setup = pre_sync_setup
+      sync = needs_sync? setup[:destination_region], setup[:source_region], setup[:snapshot], discover_aws_account_id
+      sync[:sync_required]
     end
 
     def sync_snapshot_to_region source_region, destination_region, source_snapshot
@@ -36,9 +27,9 @@ class AwsXRegionSync
       # This first thing we should do is look for a sync tag in the destination snapshot (if present) and see we've already synced this
       # snapshot-id (or if the id is outdated)
       aws_account_id = discover_aws_account_id
-      destination_snapshots = retrieve_destination_snapshots_for_instance destination_region, region(source_region), source_snapshot.db_instance.id, aws_account_id
-
-      if destination_snapshots.size == 0 || snapshot_needs_copying(destination_snapshots, source_snapshot)
+      
+      sync = needs_sync?(destination_region, source_region, source_snapshot, aws_account_id)
+      if sync[:sync_required]
         sr = region(source_region)
         result = destination_region.client.copy_db_snapshot source_db_snapshot_identifier: arn(sr, aws_account_id, source_snapshot.id), target_db_snapshot_identifier: sanitize_snapshot_id(source_snapshot.id)
 
@@ -57,7 +48,7 @@ class AwsXRegionSync
           source_region.client.add_tags_to_resource resource_name: arn(sr, aws_account_id, source_snapshot.id), tags: [source_sync_tag]
 
           # We'll now clean up older snapshots if necessary
-          cleanup_old_snapshots destination_snapshots, max_snapshots, destination_region
+          cleanup_old_snapshots sync[:snapshots], max_snapshots, destination_region
         end
       end
 
@@ -65,6 +56,33 @@ class AwsXRegionSync
     end
 
     private
+
+      def pre_sync_setup
+        # There doesn't appear to be a direct way of actually obtaining
+        # a region reference after initializing the rds client - like there is for the s3 client
+        # so we'll just create multiple clients.
+        source_rds = rds_client config['source_region'], config['db_instance']
+        destination_rds = rds_client config['destination_region'], config['db_instance']
+
+        instance = source_rds.db_instances[config['db_instance']]
+        raise AwsXRegionSyncConfigError, "No DB Instance with identifier '#{config['db_instance']}' is available for these credentials in region #{config['db_instance']}." unless instance
+
+        # Find all the snapshots
+        snapshots = instance.snapshots.with_type('automated').to_a
+        raise AwsXRegionSyncConfigError, "No automated snapshots for db '#{config['db_instance']}' are available for these credentials in region #{config['source_region']}." unless snapshots.size > 0
+
+        # Use the created_at attribute of the snapshot to find the newest one
+        newest_snapshot = extract_newest_snapshot snapshots
+
+        {source_region: source_rds, destination_region: destination_rds, snapshot: newest_snapshot}
+      end
+
+      def needs_sync? destination_region, source_region, source_snapshot, aws_account_id
+        destination_snapshots = retrieve_destination_snapshots_for_instance destination_region, region(source_region), source_snapshot.db_instance.id, aws_account_id
+        sync_needed = destination_snapshots.size == 0 || snapshot_needs_copying(destination_snapshots, source_snapshot)
+
+        {sync_required: sync_needed, snapshots: destination_snapshots}
+      end
 
       def rds_client region, db_instance
         # There doesn't appear to be a direct way of actually obtaining

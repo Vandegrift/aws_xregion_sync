@@ -2,6 +2,17 @@ require 'aws_xregion_sync'
 
 describe AwsXRegionSync::Ec2AmiSync do
 
+  before :each do
+    @s = AwsXRegionSync::Ec2AmiSync.new 'name', {
+      'source_region' => 'source',
+      'destination_region' => 'dest',
+      'sync_identifier' => 'identifier',
+      'owner_id' => 'owner',
+      'aws_client_config' => {
+        'aws_secret_key' => 'secret'
+      }
+    }
+  end
   # There's a lot of mocking happening here to take AWS interaction out of the picture
   # I'm aware that's a potential issue.
   # Ideally we'd use somethign like VCR to reply the actual web requests, but I don't
@@ -9,18 +20,7 @@ describe AwsXRegionSync::Ec2AmiSync do
   describe "#sync" do
 
     context "has a valid configuration" do
-      before :each do
-        @s = AwsXRegionSync::Ec2AmiSync.new 'name', {
-          'source_region' => 'source',
-          'destination_region' => 'dest',
-          'sync_identifier' => 'identifier',
-          'owner_id' => 'owner',
-          'aws_client_config' => {
-            'aws_secret_key' => 'secret'
-          }
-        }
-      end
-
+  
       it "syncs an image from one region to another, verifying the image doesn't already exist in the destination region" do
         ec2 = double("AWS::EC2")
         @s.should_receive(:ec2_client).with(@s.aws_config).and_return ec2
@@ -259,6 +259,143 @@ describe AwsXRegionSync::Ec2AmiSync do
         
         expect{@s.sync}.to raise_error AwsXRegionSync::AwsXRegionSyncConfigError, "Invalid region code of 'dest' found for identifier '#{@s.sync_name}'.  It either does not exist or the given credentials cannot access it."
       end
+    end
+  end
+
+  describe "#sync_required?" do
+    it "requires sync if source image doesn't have sync tags" do
+      ec2 = double("AWS::EC2")
+      @s.should_receive(:ec2_client).with(@s.aws_config).and_return ec2
+
+      # validate regions
+      source = double("source region")
+      source.stub(:name).and_return "source"
+      dest = double("dest region")
+      dest.stub(:name).and_return "dest"
+
+      regions = {'source'=>source, 'dest'=>dest}
+      ec2.stub(:regions).and_return regions
+
+      source.should_receive(:exists?).and_return true
+      dest.should_receive(:exists?).and_return true
+
+      source.should_receive(:images).and_return source
+      source.should_receive(:with_owner).with(@s.config['owner_id']).and_return source
+      source.should_receive(:filter).with("tag:Sync-Identifier", "identifier").and_return source
+      image = double("AWS::EC2::Image")
+      image.stub(:id).and_return "AMI-ID"
+      image.stub(:name).and_return "Source Image Name"
+      source.should_receive(:to_a).and_return [image]
+
+      image_tags = {}
+      image.stub(:tags).and_return image_tags      
+
+      expect(@s.sync_required?).to be_true
+    end
+
+    it "requires sync if destination region does not list the synced image" do
+      ec2 = double("AWS::EC2")
+      @s.should_receive(:ec2_client).with(@s.aws_config).and_return ec2
+
+      # validate regions
+      source = double("source region")
+      source.stub(:name).and_return "source"
+      dest = double("dest region")
+      dest.stub(:name).and_return "dest"
+
+      regions = {'source'=>source, 'dest'=>dest}
+      ec2.stub(:regions).and_return regions
+
+      source.should_receive(:exists?).and_return true
+      dest.should_receive(:exists?).and_return true
+
+      source.should_receive(:images).and_return source
+      source.should_receive(:with_owner).with(@s.config['owner_id']).and_return source
+      source.should_receive(:filter).with("tag:Sync-Identifier", "identifier").and_return source
+      image = double("AWS::EC2::Image")
+      image.stub(:id).and_return "AMI-ID"
+      image.stub(:name).and_return "Source Image Name"
+      source.should_receive(:to_a).and_return [image]
+
+      # Make the sync check if the dest region has the AMI already
+      image_tags = {"Tag1"=>"Value1", "Sync-dest" => "20131201000000+0000 / TARGETID"}
+      image.stub(:tags).and_return image_tags
+      
+      dest.should_receive(:images).and_return({})
+
+      expect(@s.sync_required?).to be_true
+    end
+
+    it "requires sync if destination region does not have an existing copy of the source image in it" do
+      ec2 = double("AWS::EC2")
+      @s.should_receive(:ec2_client).with(@s.aws_config).and_return ec2
+
+      # validate regions
+      source = double("source region")
+      source.stub(:name).and_return "source"
+      dest = double("dest region")
+      dest.stub(:name).and_return "dest"
+
+      regions = {'source'=>source, 'dest'=>dest}
+      ec2.stub(:regions).and_return regions
+
+      source.should_receive(:exists?).and_return true
+      dest.should_receive(:exists?).and_return true
+
+      source.should_receive(:images).and_return source
+      source.should_receive(:with_owner).with(@s.config['owner_id']).and_return source
+      source.should_receive(:filter).with("tag:Sync-Identifier", "identifier").and_return source
+      image = double("AWS::EC2::Image")
+      image.stub(:id).and_return "AMI-ID"
+      image.stub(:name).and_return "Source Image Name"
+      source.should_receive(:to_a).and_return [image]
+
+      # Make the sync check if the dest region has the AMI already
+      image_tags = {"Tag1"=>"Value1", "Sync-dest" => "20131201000000+0000 / TARGETID"}
+      image.stub(:tags).and_return image_tags
+      
+      dest.should_receive(:images).and_return dest
+      dest_image = double("nonexisting dest. image")
+      dest.should_receive(:[]).with('TARGETID').and_return dest_image
+      dest_image.should_receive(:exists?).and_return false
+
+      expect(@s.sync_required?).to be_true
+    end
+
+    it "does not require sync if the destination region already has an image copied" do
+      ec2 = double("AWS::EC2")
+      @s.should_receive(:ec2_client).with(@s.aws_config).and_return ec2
+
+      # validate regions
+      source = double("source region")
+      source.stub(:name).and_return "source"
+      dest = double("dest region")
+      dest.stub(:name).and_return "dest"
+
+      regions = {'source'=>source, 'dest'=>dest}
+      ec2.stub(:regions).and_return regions
+
+      source.should_receive(:exists?).and_return true
+      dest.should_receive(:exists?).and_return true
+
+      source.should_receive(:images).and_return source
+      source.should_receive(:with_owner).with(@s.config['owner_id']).and_return source
+      source.should_receive(:filter).with("tag:Sync-Identifier", "identifier").and_return source
+      image = double("AWS::EC2::Image")
+      image.stub(:id).and_return "AMI-ID"
+      image.stub(:name).and_return "Source Image Name"
+      source.should_receive(:to_a).and_return [image]
+
+      # Make the sync check if the dest region has the AMI already
+      image_tags = {"Tag1"=>"Value1", "Sync-dest" => "20131201000000+0000 / TARGETID"}
+      image.stub(:tags).and_return image_tags
+      
+      dest.should_receive(:images).and_return dest
+      dest_image = double("nonexisting dest. image")
+      dest.should_receive(:[]).with('TARGETID').and_return dest_image
+      dest_image.should_receive(:exists?).and_return true
+
+      expect(@s.sync_required?).to be_false
     end
   end
 end
