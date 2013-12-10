@@ -1,19 +1,25 @@
 require 'aws-sdk'
 require 'require_all'
-require_all 'lib/aws_xregion_sync'
+require_rel 'aws_xregion_sync'
 
 class AwsXRegionSync
 
-  def self.run config_file_path
-    job_configs = configure config_file_path
+  def self.run config_file_path_or_hash
+    job_configs = configure config_file_path_or_hash
     error_results = create_results_from_config_errors job_configs[:errors]
     job_syncs = sync job_configs[:jobs]
 
     job_syncs + error_results
   end
 
-  def self.configure config_file_path
-    Configure.configure_from_file config_file_path 
+  def self.configure config
+    # Use to_hash since this will allow a broader range of config options to anyone
+    # passing in a config object rather than a filename
+    if config.respond_to? :to_hash
+      Configure.generate_sync_jobs config.to_hash
+    else
+      Configure.configure_from_file config 
+    end
   end
   private_class_method :configure
 

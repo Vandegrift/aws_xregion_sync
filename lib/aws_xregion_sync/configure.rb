@@ -54,6 +54,7 @@ class AwsXRegionSync
       job.validate_config
       job
     end
+    private_class_method :create_sync_job
 
     def self.load_yaml_config_file config
       if config.is_a? String
