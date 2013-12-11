@@ -12,7 +12,9 @@ Gem::Specification.new do |s|
   s.homepage    = "http://github.com/Vandegrift/aws_xregion_sync"
   s.summary     = "Simple tool to help sync Amazon resources across regions."
   s.description = "Sync EC2 AMIs and RDS Snapshots across AWS regions as part of your Disaster Recovery planning."
+  s.license = "LGPL-3"
  
+  s.required_ruby_version = ">= 2"
   s.required_rubygems_version = ">= 1.5"
  
   s.add_runtime_dependency "aws-sdk", [">= 1.17"]
