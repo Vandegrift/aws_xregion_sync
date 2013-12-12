@@ -7,12 +7,12 @@ Gem::Specification.new do |s|
   s.name        = "aws_xregion_sync"
   s.version     = AwsXRegionSync::VERSION
   s.platform    = Gem::Platform::RUBY
-  s.authors     = ["Jeremy Hulford"]
-  s.email       = ["jhulford@vandegriftinc.com"]
+  s.authors     = ["Vandegrift Forwarding Company"]
+  s.email       = ["it-admin@vandegriftinc.com"]
   s.homepage    = "http://github.com/Vandegrift/aws_xregion_sync"
   s.summary     = "Simple tool to help sync Amazon resources across regions."
   s.description = "Sync EC2 AMIs and RDS Snapshots across AWS regions as part of your Disaster Recovery planning."
-  s.license = "LGPL-3"
+  s.license = "MIT"
  
   s.required_ruby_version = ">= 2"
   s.required_rubygems_version = ">= 1.5"
@@ -21,6 +21,6 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "require_all"
   s.add_development_dependency "rspec"
  
-  s.files        = Dir.glob("lib/**/*") + %w(LICENSE.txt COPYING.LESSER.txt COPYING.LESSER.txt README.md)
+  s.files        = Dir.glob("lib/**/*") + %w(LICENSE.txt README.md)
   s.require_path = 'lib'
 end

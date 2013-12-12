@@ -129,16 +129,10 @@ end
 
 ## Contributing
 
-Yes, this code is still very rough and not a whole lot of bells and whistles are currently supported.  See something you want added or have a bug that needs sqashing?  
+See something you want added or have a bug that needs sqashing?  
 Feel free to open an issue and we'll get back to you OR better yet, fork the project, create a topic branch, code up your awesome change, push to your branch and open a pull request with us.  
-
-Because we're actually dog-fooding this project, if you make sweeping changes and/or functionality changes we can't absolutely guarantee we'll merge your pull request but we'll 
-at least consider everything.  Create an issue if there's any doubt and we'll respond.
-
-Please note, by submitting a pull request you are declaring that you have the right to submit the modifications contained in the request for inclusion into the aws_xregion_sync project 
-and do also agree that your modifications may be licensed under the current license associated with this project at the time of the pull request.
 
 License
 -------
 
-aws_xregion_sync is available under the LGPLv3 license, see the LICENSE.md, COPYING.txt and COPYING.LESSER.txt files for full details.
+aws_xregion_sync is available under the MIT License.  See LICENSE.txt for more information 
